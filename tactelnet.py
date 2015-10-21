@@ -23,7 +23,7 @@
 #
 
 import time
-from opentac import OpenTac
+from opentac.opentac import OpenTac
 import socket
 import logging
 
@@ -54,6 +54,7 @@ class OpenTacTelnet(object):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 logging.debug("binding to %s:%s", self.host, self.group_port)
+                print "binding to %s:%s" % (self.host, self.group_port)
                 sock.bind(('0.0.0.0', self.group_port))
                 break
             except socket.error as exc:
@@ -66,6 +67,7 @@ class OpenTacTelnet(object):
         self.running = True
         while self.running:
             logging.info("Ready to accept new connections")
+            print "Ready to accept new connections"
             self.conn, _ = sock.accept()
             # read the header to get the size of the message to follow
             data = str(self.conn.recv(8))  # 32bit limit
@@ -112,22 +114,45 @@ class OpenTacTelnet(object):
             logging.error("Message was too long to send! %d > %d" %
                           (int(msglen, 16), 0xFFFFFFFF))
             return None
-        return msglen, msgstr
+        return msglen, message
 
     def data_received(self, data):
+        if not isinstance(data, str):
+            return None
+        data = str(data).strip()
         if not data:
             self._bad_request()
             return None
         if data == 'alarm':
             self.opentac.red_led_on()
-            self._ack_response()
         elif data == 'clear_alarm':
             self.opentac.red_led_off()
-            self._ack_response()
+        elif data == 'green_on':
+            self.opentac.green_led_on()
+        elif data == 'green_off':
+            self.opentac.green_led_off()
+        self._ack_response()
+        return
+
+    def finalize(self):
+        self.opentac.teardown()
 
 
 def main():
-    OpenTacTelnet().run()
+    """
+    As no full client yet exists, testing relies on simple telnet.
+    First entry is the length of the message
+    Second entry is the message.
+    The connection will be closed after each message.
+    Use KeyboardInterrupt to close the server and teardown
+    all changes.
+    """
+    opentac = OpenTacTelnet()
+    try:
+        opentac.run()
+    except KeyboardInterrupt:
+        opentac.finalize()
+        raise KeyboardInterrupt
     return 0
 
 if __name__ == '__main__':
